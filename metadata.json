@@ -1,5 +1,7 @@
 {
   "name": "State Chemical Prospector",
   "description": "A prospecting tool for State Industrial Products to find commercial, institutional, and industrial business leads across any target market using real-time Google Maps data.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "geolocation"
+  ]
 }

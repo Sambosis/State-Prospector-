@@ -4,12 +4,16 @@ export interface MarketSegment {
   subSegments: string[];
 }
 
-export type SearchMode = 'broad' | 'targeted'; // Simplified modes
+export type SearchMode = 'broad' | 'targeted';
 
 export interface SearchParams {
-  location: string; // "Baltimore, MD", "19104", "Delaware", etc.
+  location: string;
   segment?: string;
   subSegment?: string;
+  latLng?: {
+    latitude: number;
+    longitude: number;
+  };
 }
 
 export interface Prospect {
@@ -23,8 +27,14 @@ export interface Prospect {
   notes: string;
 }
 
+export interface GroundingSource {
+  title: string;
+  uri: string;
+}
+
 export interface ProspectResult {
   prospects: Prospect[];
+  sourceUrls?: GroundingSource[];
 }
 
 export interface SavedSearch {

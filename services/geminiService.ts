@@ -1,83 +1,158 @@
 import { GoogleGenAI } from "@google/genai";
-import { SearchParams, ProspectResult } from '../types';
+import { SearchParams, ProspectResult, GroundingSource } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+/**
+ * Maps common regional context to help the AI understand the specific market dynamics.
+ */
+const getRegionalContext = (location: string): string => {
+  const clean = location.trim();
+  if (clean === '21222') return 'Dundalk/Baltimore, MD (Strong industrial and residential housing market)';
+  if (clean.startsWith('212')) return 'Baltimore Metro Area, MD';
+  return '';
+};
+
 export const searchProspects = async (params: SearchParams): Promise<ProspectResult> => {
-  // Enhanced context with specific product lines for "Likely Services Needed" inference
-  const baseContext = `You are a sales prospecting assistant for State Industrial Products (Chemical Division). 
-  Your goal is to find valid business prospects in the target location: "${params.location}".
+  // Using gemini-2.5-flash for optimized grounding performance
+  const modelName = 'gemini-2.5-flash';
   
-  Focus on businesses that would benefit from State Chemical's primary product lines:
-  - Air Care (odor control, scenting)
-  - Drain Care (maintenance, blockage prevention)
-  - Wastewater (treatment solutions)
-  - Water Treatment (cooling towers, boilers, closed loops)
-  `;
-
-  let prompt = '';
-  const locationContext = `Search in and around ${params.location}.`;
-
-  if (params.segment) {
-    // Targeted Search
-    const target = params.subSegment ? `${params.subSegment} (${params.segment})` : params.segment;
-    prompt = `${baseContext} ${locationContext} Search specifically for ${target} businesses. List 15-20 relevant results.`;
-  } else {
-    // Broad Search
-    prompt = `${baseContext} ${locationContext} Search broadly for high-potential commercial, institutional, or industrial prospects (e.g. Healthcare, Manufacturing, Education, Hospitality). List 15-20 diverse businesses.`;
+  const cleanLoc = params.location.trim();
+  const regionalContext = getRegionalContext(cleanLoc);
+  
+  // Construct a query that forces the grounding tools to look for the right things
+  let categoryQuery = "commercial businesses and industrial facilities";
+  if (params.segment === 'Residential/Housing' || !params.segment) {
+    categoryQuery = "apartment complexes, multi-family housing, and property management offices";
+  } else if (params.segment) {
+    categoryQuery = `${params.subSegment || params.segment} businesses`;
   }
 
-  prompt += `
-  
-  IMPORTANT:
-  1. Return the results as a raw JSON array. Do NOT use Markdown code blocks (like \`\`\`json). Just return the raw JSON string.
-  2. The JSON array must contain objects with the following properties: "name", "phone", "email", "address", "city", "state", "zip", "notes".
-  3. "address" should be the street address only (e.g., 123 Main St).
-  4. "city", "state", and "zip" should be extracted from the full address.
-  5. "email": Leave as an empty string "" if not available.
-  6. "notes": This field MUST contain the Market Segment (Category), Likely Services Needed (Air Care, Drain Care, etc.), and any other notable details found. Format it clearly.
-  7. Ensure the businesses are currently active.
-  `;
+  const locationQuery = `${categoryQuery} in ${cleanLoc} ${regionalContext}`;
+
+  const systemInstruction = `You are an expert Lead Generation Agent for State Industrial Products.
+Your mission is to find high-value B2B prospects.
+
+DATA SOURCING:
+- Phone Numbers: Retrieve primarily from Google Maps data.
+- Email Addresses: Search for official business websites via Google Search snippets.
+- Addresses: Use verified Google Maps locations.
+
+CRITICAL INSTRUCTIONS:
+1. Use the Google Maps and Google Search tools for "${locationQuery}".
+2. Even if the tools return "residential" areas, look for the COMMERCIAL entities managing them (e.g., "Dundalk Village Apartments").
+3. You MUST synthesize a JSON response. Do not say "I couldn't find anything" if there are any map results or search snippets.
+4. For housing/apartments (especially in 21222), suggest "Air Care" for hallways/lobbies and "Drain Care" for maintenance.
+
+DATA PURITY POLICY (CRITICAL FOR CSV):
+- If a phone number OR email address is not found, leave the field as an empty string ("").
+- DO NOT provide placeholders like "N/A", "Unknown", "None", "No Phone", "No Email", or "Contact via web".
+- Fields MUST be blank if data is missing.
+
+OUTPUT FORMAT:
+Return ONLY a JSON array:
+[
+  { "name": "...", "phone": "...", "email": "...", "address": "...", "city": "...", "state": "...", "zip": "...", "notes": "..." }
+]`;
+
+  const userPrompt = `Find 15-20 prospects for State Industrial Products in ${cleanLoc}. 
+Focus: ${categoryQuery}. 
+Provide a list of entities with their contact details. If phone or email is not found, leave the field blank.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        tools: [{ googleMaps: {} }],
-        // responseMimeType and responseSchema are NOT supported when using googleMaps tool.
-        // We handle JSON parsing manually from the text response.
-      },
-    });
+    const config: any = {
+      systemInstruction,
+      tools: [{ googleMaps: {} }, { googleSearch: {} }],
+      temperature: 0.1,
+    };
 
-    let jsonString = response.text || "[]";
-    
-    // Clean up if the model includes markdown code blocks despite instructions
-    jsonString = jsonString.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/```\s*$/, '');
-
-    let prospects = [];
-    try {
-        prospects = JSON.parse(jsonString);
-    } catch (e) {
-        console.warn("Failed to parse JSON directly, attempting to extract array.", jsonString);
-        // Fallback: try to find the first '[' and last ']'
-        const start = jsonString.indexOf('[');
-        const end = jsonString.lastIndexOf(']');
-        if (start !== -1 && end !== -1) {
-            try {
-                prospects = JSON.parse(jsonString.substring(start, end + 1));
-            } catch (innerE) {
-                console.error("JSON parsing completely failed", innerE);
-                throw new Error("Could not parse the data returned by AI.");
-            }
+    if (params.latLng) {
+      config.toolConfig = {
+        retrievalConfig: {
+          latLng: params.latLng
         }
+      };
     }
 
-    return {
-      prospects
-    };
-  } catch (error) {
-    console.error("Error fetching prospects:", error);
-    throw new Error("Failed to fetch prospects. Please check your API key and try again.");
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: userPrompt,
+      config,
+    });
+
+    let responseText = "";
+    const candidate = response.candidates?.[0];
+    
+    if (candidate?.content?.parts) {
+      responseText = candidate.content.parts
+        .filter(part => part.text)
+        .map(part => part.text)
+        .join("\n")
+        .trim();
+    }
+
+    const sourceUrls: GroundingSource[] = [];
+    if (candidate?.groundingMetadata?.groundingChunks) {
+      candidate.groundingMetadata.groundingChunks.forEach((chunk: any) => {
+        if (chunk.maps) {
+          sourceUrls.push({ title: chunk.maps.title || "Maps Location", uri: chunk.maps.uri });
+        } else if (chunk.web) {
+          sourceUrls.push({ title: chunk.web.title || "Web Source", uri: chunk.web.uri });
+        }
+      });
+    }
+
+    const firstBracket = responseText.indexOf('[');
+    const lastBracket = responseText.lastIndexOf(']');
+
+    if (firstBracket === -1 || lastBracket === -1) {
+      if (sourceUrls.length > 0) {
+        throw new Error(`The system found ${sourceUrls.length} locations in ${cleanLoc} but hit a processing error. Please try clicking 'Find Prospects' again.`);
+      }
+      throw new Error(`No specific ${categoryQuery} were identified in "${cleanLoc}". Try searching for 'Dundalk, MD' or a broader segment.`);
+    }
+
+    const jsonString = responseText.substring(firstBracket, lastBracket + 1);
+
+    try {
+      const prospects = JSON.parse(jsonString);
+      if (Array.isArray(prospects) && prospects.length > 0) {
+        return {
+          prospects: prospects.map(p => {
+            // Clean AI noise for emails and phones
+            const placeholders = ["n/a", "none", "unknown", "null", "pending", "no phone", "no email", "not found", "contact via web"];
+            
+            let cleanEmail = (p.email || "").toString().trim();
+            if (placeholders.includes(cleanEmail.toLowerCase())) {
+              cleanEmail = "";
+            }
+
+            let cleanPhone = (p.phone || "").toString().trim();
+            if (placeholders.includes(cleanPhone.toLowerCase())) {
+              cleanPhone = "";
+            }
+            
+            return {
+              name: p.name || "Business Name Unknown",
+              phone: cleanPhone,
+              email: cleanEmail,
+              address: p.address || "Local Area",
+              city: p.city || cleanLoc,
+              state: p.state || "",
+              zip: p.zip || cleanLoc,
+              notes: p.notes || "Identified as a facility requiring maintenance services."
+            };
+          }),
+          sourceUrls
+        };
+      }
+      throw new Error("No prospects were formatted in the results. Try a broader search area.");
+    } catch (parseError) {
+      console.error("JSON Parse Error:", jsonString);
+      throw new Error("The search results were returned in an unreadable format. Retrying usually fixes this.");
+    }
+  } catch (error: any) {
+    console.error("Search Engine Error:", error);
+    throw error;
   }
 };
