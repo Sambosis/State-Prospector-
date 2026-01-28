@@ -8,6 +8,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
  */
 const getRegionalContext = (location: string): string => {
   const clean = location.trim();
+  if (clean.toLowerCase() === 'current location') return 'nearby the current GPS coordinates';
   if (clean === '21222') return 'Dundalk/Baltimore, MD (Strong industrial and residential housing market)';
   if (clean.startsWith('212')) return 'Baltimore Metro Area, MD';
   return '';
@@ -22,7 +23,8 @@ export const searchProspects = async (params: SearchParams): Promise<ProspectRes
   
   // Construct a query that forces the grounding tools to look for the right things
   let categoryQuery = "commercial businesses and industrial facilities";
-  if (params.segment === 'Residential/Housing' || !params.segment) {
+  
+  if (params.segment === 'Residential/Housing') {
     categoryQuery = "apartment complexes, multi-family housing, and property management offices";
   } else if (params.segment) {
     categoryQuery = `${params.subSegment || params.segment} businesses`;
@@ -107,9 +109,9 @@ Provide a list of entities with their contact details. If phone or email is not 
 
     if (firstBracket === -1 || lastBracket === -1) {
       if (sourceUrls.length > 0) {
-        throw new Error(`The system found ${sourceUrls.length} locations in ${cleanLoc} but hit a processing error. Please try clicking 'Find Prospects' again.`);
+        throw new Error(`The system found ${sourceUrls.length} locations in ${cleanLoc} but hit a processing error during synthesis.`);
       }
-      throw new Error(`No specific ${categoryQuery} were identified in "${cleanLoc}". Try searching for 'Dundalk, MD' or a broader segment.`);
+      throw new Error(`No specific ${categoryQuery} were identified. The Search Engine couldn't find valid contact data for this criteria.`);
     }
 
     const jsonString = responseText.substring(firstBracket, lastBracket + 1);
@@ -119,18 +121,11 @@ Provide a list of entities with their contact details. If phone or email is not 
       if (Array.isArray(prospects) && prospects.length > 0) {
         return {
           prospects: prospects.map(p => {
-            // Clean AI noise for emails and phones
             const placeholders = ["n/a", "none", "unknown", "null", "pending", "no phone", "no email", "not found", "contact via web"];
-            
             let cleanEmail = (p.email || "").toString().trim();
-            if (placeholders.includes(cleanEmail.toLowerCase())) {
-              cleanEmail = "";
-            }
-
+            if (placeholders.includes(cleanEmail.toLowerCase())) cleanEmail = "";
             let cleanPhone = (p.phone || "").toString().trim();
-            if (placeholders.includes(cleanPhone.toLowerCase())) {
-              cleanPhone = "";
-            }
+            if (placeholders.includes(cleanPhone.toLowerCase())) cleanPhone = "";
             
             return {
               name: p.name || "Business Name Unknown",
@@ -146,13 +141,15 @@ Provide a list of entities with their contact details. If phone or email is not 
           sourceUrls
         };
       }
-      throw new Error("No prospects were formatted in the results. Try a broader search area.");
+      throw new Error("Lead Synthesis failed: No actionable data points were extracted from the sources.");
     } catch (parseError) {
-      console.error("JSON Parse Error:", jsonString);
-      throw new Error("The search results were returned in an unreadable format. Retrying usually fixes this.");
+      throw new Error("Lead Synthesis error: The model response was formatted incorrectly. Please retry.");
     }
   } catch (error: any) {
     console.error("Search Engine Error:", error);
+    // Categorize error for diagnostic UI
+    if (error.message?.includes('Maps')) throw new Error(`Google Maps Tool: ${error.message}`);
+    if (error.message?.includes('Search')) throw new Error(`Web Search Tool: ${error.message}`);
     throw error;
   }
 };

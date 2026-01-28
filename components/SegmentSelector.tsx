@@ -9,6 +9,11 @@ interface SegmentSelectorProps {
 }
 
 const SegmentIcons: Record<string, React.ReactNode> = {
+  'all': (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9-9c1.657 0 3 1.343 3 3s-1.343 3-3 3-3-1.343-3-3 1.343-3 3-3z" />
+    </svg>
+  ),
   'residential': (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -58,7 +63,13 @@ const SegmentSelector: React.FC<SegmentSelectorProps> = ({
   useEffect(() => {
     if (selectedSegment) {
       const segment = MARKET_SEGMENTS.find(s => s.name === selectedSegment);
-      if (segment) setOpenSegmentId(segment.id);
+      if (segment) {
+        setOpenSegmentId(segment.id);
+      } else if (selectedSegment === '') {
+        setOpenSegmentId('all');
+      }
+    } else {
+      setOpenSegmentId('all');
     }
   }, [selectedSegment]);
 
@@ -72,20 +83,22 @@ const SegmentSelector: React.FC<SegmentSelectorProps> = ({
     }
   };
 
+  const handleSelectAll = () => {
+    setOpenSegmentId('all');
+    onSelectSegment('');
+    onSelectSubSegment('');
+  };
+
   return (
     <div className="space-y-3 animate-fade-in">
       <div className="flex items-center justify-between mb-4">
         <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">
           Industry Focus
         </label>
-        {selectedSegment && (
+        {selectedSegment !== '' && (
           <button 
             type="button"
-            onClick={() => {
-              onSelectSegment('');
-              onSelectSubSegment('');
-              setOpenSegmentId(null);
-            }}
+            onClick={handleSelectAll}
             className="text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 px-2 py-1 rounded-md transition-colors"
           >
             Clear Selection
@@ -94,6 +107,44 @@ const SegmentSelector: React.FC<SegmentSelectorProps> = ({
       </div>
 
       <div className="space-y-2">
+        {/* All Segments Option */}
+        <div 
+          className={`border rounded-xl transition-all duration-300 overflow-hidden ${
+            openSegmentId === 'all' && selectedSegment === ''
+              ? 'border-blue-200 bg-blue-50/20 shadow-sm' 
+              : 'border-slate-200 bg-white hover:border-slate-300'
+          }`}
+        >
+          <button
+            type="button"
+            onClick={handleSelectAll}
+            className="w-full flex items-center justify-between p-4 focus:outline-none group"
+          >
+            <div className="flex items-center space-x-3">
+              <div className={`p-2 rounded-lg transition-colors ${
+                selectedSegment === '' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'
+              }`}>
+                {SegmentIcons['all']}
+              </div>
+              <div className="text-left">
+                <span className={`text-sm font-bold tracking-tight block transition-colors ${
+                  selectedSegment === '' ? 'text-blue-900' : 'text-slate-700 group-hover:text-slate-900'
+                }`}>
+                  All Market Segments
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">Broad market-wide search</span>
+              </div>
+            </div>
+            {selectedSegment === '' && (
+              <div className="text-blue-600">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              </div>
+            )}
+          </button>
+        </div>
+
         {MARKET_SEGMENTS.map((seg) => {
           const isOpen = openSegmentId === seg.id;
           const isSelected = selectedSegment === seg.name;
@@ -174,7 +225,7 @@ const SegmentSelector: React.FC<SegmentSelectorProps> = ({
       
       {!selectedSegment && (
         <p className="text-[11px] text-slate-400 font-medium italic mt-2 ml-1">
-          Select a category to refine your prospecting search.
+          Perform a broad search or select a category to refine your results.
         </p>
       )}
     </div>
