@@ -3,9 +3,9 @@ import Header from './components/Header';
 import SegmentSelector from './components/SegmentSelector';
 import ProspectResults from './components/ProspectResults';
 import HistoryList from './components/HistoryList';
-import { SearchParams, ProspectResult, SavedSearch } from './types';
+import { SearchParams, ProspectResult, SavedSearch, GroundingSource } from './types';
 import { searchProspects } from './services/geminiService';
-import { getSavedSearches, saveSearch, deleteSavedSearch } from './services/storageService';
+import { getSavedSearches, saveSearch, deleteSavedSearch, updateSavedSearch } from './services/storageService';
 
 type ToolStatus = 'idle' | 'processing' | 'success' | 'error';
 
@@ -33,6 +33,7 @@ const App: React.FC = () => {
   
   const [history, setHistory] = useState<SavedSearch[]>([]);
   const [userCoords, setUserCoords] = useState<{latitude: number, longitude: number} | null>(null);
+  const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
 
   useEffect(() => {
     setHistory(getSavedSearches());
@@ -101,6 +102,8 @@ const App: React.FC = () => {
       latLng: userCoords || undefined
     };
 
+    let success = false;
+
     try {
       const data = await searchProspects(params);
       
@@ -109,22 +112,33 @@ const App: React.FC = () => {
         setDiagnostic({ maps: 'error', search: 'error', synthesis: 'error' });
       } else {
         setDiagnostic({ maps: 'success', search: 'success', synthesis: 'success' });
+        success = true;
         // Small delay to show success states before results pop in
         setTimeout(() => {
           setResults(data);
           const updatedHistory = saveSearch(params, data);
           setHistory(updatedHistory);
+          if (updatedHistory.length > 0) {
+            setActiveSearchId(updatedHistory[0].id);
+          }
           setLoading(false);
         }, 800);
-        return; // Success handles its own loading state change
       }
     } catch (err: any) {
       console.error("App Error:", err);
-      const tool = err.message.toLowerCase().includes('maps') ? 'maps' : 
-                   err.message.toLowerCase().includes('search') ? 'search' : 'synthesis';
+      
+      let msg = err.message || "A system error occurred during lead generation.";
+      
+      // Handle raw RPC/XHR errors commonly seen with tool proxies
+      if (typeof msg === 'string' && (msg.includes("Rpc failed") || msg.includes("xhr error") || msg.includes("error code: 6"))) {
+         msg = "The AI service is temporarily unavailable (Error 500). Please try again in a moment.";
+      }
+      
+      const tool = msg.toLowerCase().includes('maps') ? 'maps' : 
+                   msg.toLowerCase().includes('search') ? 'search' : 'synthesis';
       
       setError({ 
-        message: err.message || "A system error occurred during lead generation.",
+        message: msg,
         tool: tool as keyof DiagnosticState
       });
       
@@ -133,8 +147,10 @@ const App: React.FC = () => {
         [tool]: 'error'
       }));
     } finally {
-      // In case of error, stop loading immediately
-      if (!results) setLoading(false);
+      // Only stop loading immediately if we failed or didn't start the success timer
+      if (!success) {
+        setLoading(false);
+      }
     }
   };
 
@@ -143,8 +159,35 @@ const App: React.FC = () => {
     setSelectedSegment(saved.params.segment || '');
     setSelectedSubSegment(saved.params.subSegment || '');
     setResults(saved.results);
+    setActiveSearchId(saved.id);
     setError(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleUpdateProspects = (updatedProspects: any[], newSourceUrls?: GroundingSource[]) => {
+    if (!results) return;
+    
+    const mergedSources = [...(results.sourceUrls || [])];
+    if (newSourceUrls) {
+      newSourceUrls.forEach(url => {
+        if (!mergedSources.some(s => s.uri === url.uri)) {
+          mergedSources.push(url);
+        }
+      });
+    }
+
+    const updatedResults = {
+      ...results,
+      prospects: updatedProspects,
+      sourceUrls: mergedSources
+    };
+
+    setResults(updatedResults);
+
+    if (activeSearchId) {
+      const updatedHistory = updateSavedSearch(activeSearchId, updatedResults);
+      setHistory(updatedHistory);
+    }
   };
 
   const handleDeleteSavedSearch = (id: string) => {
@@ -154,6 +197,7 @@ const App: React.FC = () => {
 
   const resetSearch = () => {
     setResults(null);
+    setActiveSearchId(null);
     setError(null);
     setLoading(false);
   };
@@ -195,7 +239,16 @@ const App: React.FC = () => {
       <main className="flex-grow flex flex-col items-center justify-start pt-8 pb-12 px-4 sm:px-6">
         {results ? (
           <div className="w-full animate-fade-in-up">
-            <ProspectResults data={results} onBack={resetSearch} />
+            <ProspectResults 
+              data={results} 
+              searchParams={{
+                location,
+                segment: selectedSegment,
+                subSegment: selectedSubSegment
+              }}
+              onBack={resetSearch} 
+              onUpdateProspects={handleUpdateProspects}
+            />
           </div>
         ) : (
           <div className="w-full max-w-4xl animate-fade-in-up">
@@ -360,17 +413,26 @@ const App: React.FC = () => {
                   <div className="mt-8 space-y-4">
                      <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
                         <div 
-                          className="h-full bg-blue-600 transition-all duration-500 ease-out" 
+                          className="h-full bg-blue-600 ease-linear" 
                           style={{ 
-                            width: diagnostic.synthesis === 'processing' ? '90%' : 
-                                   diagnostic.search === 'processing' ? '60%' : 
-                                   diagnostic.maps === 'processing' ? '30%' : '0%' 
+                            transitionProperty: 'width',
+                            transitionDuration: loading ? (
+                              diagnostic.synthesis === 'processing' ? '10000ms' : 
+                              diagnostic.search === 'processing' ? '3500ms' : 
+                              diagnostic.maps === 'processing' ? '3000ms' : '300ms'
+                            ) : '0ms',
+                            width: diagnostic.synthesis === 'processing' ? '95%' : 
+                                   diagnostic.search === 'processing' ? '66%' : 
+                                   diagnostic.maps === 'processing' ? '33%' : '0%' 
                           }}
                         ></div>
                      </div>
                      <div className="flex justify-center">
                         <p className="text-xs text-slate-400 font-medium animate-pulse italic">
-                          Engaging deep-search protocols for {location || "target territory"}...
+                          {diagnostic.synthesis === 'processing' ? 'Synthesizing leads' :
+                           diagnostic.search === 'processing' ? 'Analyzing web presence and contact info' :
+                           diagnostic.maps === 'processing' ? `Retrieving geospatial data for ${location || "target territory"}` :
+                           'Initializing search protocols'}...
                         </p>
                      </div>
                   </div>

@@ -154,7 +154,7 @@ const SegmentSelector: React.FC<SegmentSelectorProps> = ({
               key={seg.id} 
               className={`border rounded-xl transition-all duration-300 overflow-hidden ${
                 isOpen 
-                  ? 'border-blue-200 bg-blue-50/20 shadow-sm' 
+                  ? 'border-blue-300 bg-white shadow-md ring-1 ring-blue-100' 
                   : 'border-slate-200 bg-white hover:border-slate-300'
               }`}
             >
@@ -184,37 +184,59 @@ const SegmentSelector: React.FC<SegmentSelectorProps> = ({
               </button>
 
               <div 
-                className={`transition-all duration-300 ease-in-out ${
-                  isOpen ? 'max-h-[500px] opacity-100 py-2 border-t border-blue-100' : 'max-h-0 opacity-0 overflow-hidden'
+                className={`transition-all duration-300 ease-in-out bg-slate-50/50 ${
+                  isOpen ? 'max-h-[800px] opacity-100 border-t border-slate-100' : 'max-h-0 opacity-0 overflow-hidden'
                 }`}
               >
-                <div className="px-4 pb-4">
-                  <div className="flex flex-wrap gap-2 mt-2">
+                <div className="p-3 sm:p-4">
+                  <div className="space-y-3">
+                    {/* General Option - Distinct */}
                     <button
                       type="button"
                       onClick={() => onSelectSubSegment('')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                      className={`w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-sm font-medium transition-all border ${
                         selectedSubSegment === ''
-                          ? 'bg-slate-800 text-white border-slate-800'
-                          : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                          ? 'bg-blue-100 text-blue-800 border-blue-200 shadow-sm ring-1 ring-blue-200'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-white hover:text-slate-800 hover:shadow-sm'
                       }`}
                     >
-                      General {seg.name}
+                      <span className="flex items-center">
+                        <span className={`w-1.5 h-1.5 rounded-full mr-2.5 ${selectedSubSegment === '' ? 'bg-blue-500' : 'bg-slate-300'}`}></span>
+                        General {seg.name}
+                      </span>
+                      {selectedSubSegment === '' && (
+                        <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
                     </button>
-                    {seg.subSegments.map((sub) => (
-                      <button
-                        key={sub}
-                        type="button"
-                        onClick={() => onSelectSubSegment(sub)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
-                          selectedSubSegment === sub
-                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                            : 'bg-white text-slate-600 border-slate-200 hover:border-blue-200 hover:bg-blue-50'
-                        }`}
-                      >
-                        {sub}
-                      </button>
-                    ))}
+
+                    {/* Sub-segments Divider */}
+                    {seg.subSegments.length > 0 && (
+                      <div className="flex items-center space-x-2">
+                        <div className="h-px bg-slate-200 flex-grow"></div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Specific Niches</span>
+                        <div className="h-px bg-slate-200 flex-grow"></div>
+                      </div>
+                    )}
+
+                    {/* Sub-segments Grid */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {seg.subSegments.map((sub) => (
+                        <button
+                          key={sub}
+                          type="button"
+                          onClick={() => onSelectSubSegment(sub)}
+                          className={`px-3 py-2 rounded-lg text-xs font-semibold text-left transition-all border h-full flex items-center ${
+                            selectedSubSegment === sub
+                              ? 'bg-white text-blue-700 border-blue-500 shadow-sm ring-1 ring-blue-500 z-10'
+                              : 'bg-white text-slate-500 border-slate-200 hover:border-blue-200 hover:text-blue-600 hover:bg-blue-50/50'
+                          }`}
+                        >
+                          {sub}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

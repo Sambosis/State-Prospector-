@@ -41,6 +41,21 @@ export const deleteSavedSearch = (id: string): SavedSearch[] => {
   return history;
 };
 
+export const updateSavedSearch = (id: string, updatedResults: ProspectResult): SavedSearch[] => {
+  const history = getSavedSearches();
+  const index = history.findIndex(s => s.id === id);
+  if (index !== -1) {
+    history[index].results = updatedResults;
+    history[index].resultCount = updatedResults.prospects.length;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+    } catch (e) {
+      console.error("Failed to update history", e);
+    }
+  }
+  return history;
+};
+
 export const clearHistory = (): void => {
   localStorage.removeItem(STORAGE_KEY);
 };

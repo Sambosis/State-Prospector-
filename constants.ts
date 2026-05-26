@@ -6,7 +6,6 @@ export const MARKET_SEGMENTS: MarketSegment[] = [
     name: 'Residential/Housing',
     subSegments: [
       'Apartments and Condos',
-      'Assisted Living Facilities',
       'Housing Authority'
     ]
   },
@@ -26,6 +25,7 @@ export const MARKET_SEGMENTS: MarketSegment[] = [
     id: 'healthcare',
     name: 'Healthcare and Medical',
     subSegments: [
+      'Assisted Living Facilities',
       'Dialysis Centers',
       'Hospitals',
       'Medical Offices and Clinics',

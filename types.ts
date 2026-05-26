@@ -25,6 +25,7 @@ export interface Prospect {
   state: string;
   zip: string;
   notes: string;
+  website?: string;
 }
 
 export interface GroundingSource {
